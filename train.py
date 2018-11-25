@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-BATCH_SIZE = 100
-EPOCHS = 20
-DEVICE = "cpu"
+BATCH_SIZE = 600
+EPOCHS = 10
+DEVICE = "cuda"
 
 train_set = datasets.MNIST(
     "./MNIST",
@@ -34,36 +34,37 @@ class Flatten(nn.Module):
         return x.view(x.shape[0], -1)
 
 model = nn.Sequential(
-    nn.Conv2d(1, 10, [1, 1]),
+    nn.Conv2d(1, 10, [3, 3], padding=1),
     nn.ReLU(),
-    DiagonalPixelLSTM(10, 100),
+    DiagonalPixelLSTM(10, 50),
     nn.MaxPool2d([28, 28]),
     Flatten(),
-    nn.Linear(100, 10),
+    nn.Linear(50, 10),
 )
 model.to(DEVICE)
-optimizer = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.5)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.05, momentum=0.5)
 
 
 def train_epoch(model, dataloader, optimizer):
     model.train()
     criterion = nn.CrossEntropyLoss()
     total_correct = 0
-    total_examples = 0
     total_loss = 0.0
+    total_examples = 0
     for i, data in enumerate(dataloader):
         x, y = data
+        x, y = x.to(DEVICE), y.to(DEVICE)
         y_hat = model(x)
         loss = criterion(y_hat, y)
         model.zero_grad()
         loss.backward()
         optimizer.step()
 
-        total_loss += loss
-        total_correct += torch.sum(torch.argmax(y_hat, 1) == y)
-        total_examples += torch.sum(y)
+        total_examples += y.size(0)
+        total_loss += loss.item()
+        total_correct += (torch.argmax(y_hat, 1) == y).sum().item()
 
-    return total_loss / total_examples, total_correct / total_examples
+    return total_loss / len(dataloader), total_correct / total_examples
 
 
 def test_epoch(model, dataloader):
@@ -74,14 +75,15 @@ def test_epoch(model, dataloader):
     total_loss = 0.0
     for i, data in enumerate(dataloader):
         x, y = data
+        x, y = x.to(DEVICE), y.to(DEVICE)
         y_hat = model(x)
         loss = criterion(y_hat, y)
 
-        total_loss += loss
-        total_correct += torch.sum(torch.argmax(y_hat, 1) == y)
-        total_examples += torch.sum(y)
+        total_loss += loss.item()
+        total_correct += (torch.argmax(y_hat, 1) == y).sum().item()
+        total_examples += y.size(0)
 
-    return total_loss / total_examples, total_correct / total_examples
+    return total_loss / len(dataloader), total_correct / total_examples
 
 
 for epoch in range(EPOCHS):
@@ -91,5 +93,5 @@ for epoch in range(EPOCHS):
     )
     print("Train Loss: {:.04f} Accuracy: {:.04f}".format(loss, acc))
     loss, acc = test_epoch(model, test_loader)
-    print("Test  Loss: {:.04f} Accuracy: {.04f}".format(loss, acc))
+    print("Test  Loss: {:.04f} Accuracy: {:.04f}".format(loss, acc))
 print("Finished.")
